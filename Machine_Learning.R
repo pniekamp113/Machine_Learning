@@ -489,3 +489,91 @@ hist(concrete$Superplasticizer)
 #Contains values of 0 which would be infinite if log transformed
 
 
+#Q4
+install.packages("caret")
+library(caret)
+library(AppliedPredictiveModeling)
+data(AlzheimerDisease)
+set.seed(3433)
+
+adData = data.frame(diagnosis, predictors)
+head(adData)
+
+inTrain = createDataPartition(adData$diagnosis, p = 3/4)[[1]] 
+inTrain
+training = adData[inTrain,]
+testing = adData[-inTrain,]
+
+names(adData)
+names(training)
+
+#select all predictors with IL
+dim(training)
+il_columns <- grep("^IL_[0-9A-Za-z_]+", names(training), value = TRUE, ignore.case = TRUE)
+il_columns
+training_IL <- training[, il_columns]
+head(training_IL)
+
+training_IL$diagnosis <- training$diagnosis
+
+
+preProc <- preProcess(training_IL,method="pca", thresh = 0.8)
+PC <- predict(preProc,training_IL)
+PC
+#plot(PC[,1],PC[,2],col=diagnosis)
+
+?preProcess
+
+
+#Q5
+set.seed(3433)
+data(AlzheimerDisease)
+adData = data.frame(diagnosis,predictors)
+inTrain = createDataPartition(adData$diagnosis, p = 3/4)[[1]]
+training = adData[ inTrain,]
+testing = adData[-inTrain,]
+
+#select all predictors with IL
+il_columns <- grep("^IL_[0-9A-Za-z_]+", names(training), value = TRUE, ignore.case = TRUE)
+il_columns
+training_IL <- training[, il_columns]
+head(training_IL)
+training_IL$diagnosis <- training$diagnosis
+
+#Model 1
+mod1<- train(diagnosis ~ .,data=training_IL,method="glm")
+summary(mod1)
+#calculate accuracy
+testingIL <- testing[,grep("^IL|diagnosis", names(testing))]
+head(testingIL)
+pred1 <- predict(mod1, newdata = testingIL)
+matrix_model <- confusionMatrix(pred1, testingIL$diagnosis)
+matrix_model$overall[1]
+matrix_model
+
+
+#Model 2
+modelPCA <- train(diagnosis ~., data = training_IL, method = "glm", preProcess = "pca",trControl=trainControl(preProcOptions=list(thresh=0.8)))
+matrix_modelPCA <- confusionMatrix(testingIL$diagnosis, predict(modelPCA, testingIL))
+matrix_modelPCA$overall[1]
+
+
+#Again
+library(caret)
+library(AppliedPredictiveModeling)
+set.seed(3433)
+data(AlzheimerDisease)
+adData = data.frame(diagnosis,predictors)
+inTrain = createDataPartition(adData$diagnosis, p = 3/4)[[1]]
+training = adData[ inTrain,]
+testing = adData[-inTrain,]
+
+# grep all columns with IL and diagnosis in the traning and testing set
+trainingIL <- training[,grep("^IL|diagnosis", names(training))]
+testingIL <- testing[,grep("^IL|diagnosis", names(testing))]
+
+# non-PCA
+model <- train(diagnosis ~ ., data = trainingIL, method = "glm")
+predict_model <- predict(model, newdata= testingIL)
+matrix_model <- confusionMatrix(predict_model, testingIL$diagnosis)
+matrix_model$overall[1]
