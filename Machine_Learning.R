@@ -19,7 +19,6 @@ abline(v=0.5,col="black")
 
 prediction <- ifelse(spam$your > 0.5,"spam","nonspam")
 table(prediction,spam$type)/length(spam$type)
-
 #Output shows that the algorithm is about 75% accurate -> 45% for nonspam + 30% spam
 
 
@@ -54,3 +53,439 @@ table(rule1(spam$capitalAve),spam$type)
 table(rule2(spam$capitalAve),spam$type)
 mean(rule1(spam$capitalAve)==spam$type)
 mean(rule2(spam$capitalAve)==spam$type)
+
+
+sum(rule1(spam$capitalAve)==spam$type)
+sum(rule2(spam$capitalAve)==spam$type)
+#simple rule (rule 1) does better than complicated rule (rule 1)
+#overfitting
+
+
+#Module 2 / caret package
+
+install.packages("caret")
+library(caret)
+library(kernlab)
+data(spam)
+
+inTrain <- createDataPartition(y=spam$type, p = 0.75, list = FALSE)
+training <- spam[inTrain,]
+testing <- spam[-inTrain,]
+head(inTrain)
+dim(training)
+training
+
+
+set.seed(32343)
+modelFit <- train(type ~., data = training, method = "glm")
+modelFit
+
+modelFit$finalModel
+
+predictions <- predict(modelFit, newdata = testing)
+predictions
+
+confusionMatrix(predictions, testing$type)
+
+# data slicing
+
+set.seed(32323)
+folds <- createFolds(y=spam$type,k=10,
+                     list=TRUE,returnTrain=TRUE)
+sapply(folds,length)
+folds[[1]][1:10]
+
+folds <- createResample(y=spam$type, times=10, list = TRUE)
+sapply(folds, length)
+
+set.seed(32323)
+tme <- 1:1000
+folds <- createTimeSlices(y=tme,initialWindow=20,
+                          horizon=10)
+names(folds)
+folds$train[[1]]
+folds$test[[1]]
+
+#Training options
+args(train.default) #not working 
+
+args(trainControl)
+
+#plotting predictors
+
+install.packages("ISLR")
+library(ISLR)
+library(ggplot2)
+library(caret)
+
+data(Wage)
+summary(Wage)
+
+inTrain <- createDataPartition(y = Wage$wage, p = 0.7, list = FALSE)
+training <- Wage[inTrain,]
+testing <- Wage[-inTrain,]
+
+dim(training)
+dim(testing)
+
+featurePlot(x=training[,c("age","education","jobclass")],
+            y = training$wage,
+            plot="pairs")
+
+head(Wage)
+ggplot(training, aes(x = age, y = wage, color = education)) +
+  geom_point() +
+  geom_smooth(method = "lm", formula=y~x)
+
+fit <- lm(wage ~ age + education , data = Wage)
+summary(fit)
+
+
+
+install.packages("Hmisc")
+library(Hmisc)
+
+cutWage <- cut2(training$wage, g=3)
+table(cutWage)
+
+summary(Wage)
+
+ggplot(training, aes(cutWage, age, fill = cutWage))+
+  geom_boxplot()
+
+t1 <- table(cutWage, training$jobclass)
+t1
+
+prop.table(t1,1)
+
+ggplot(training, aes(wage, color = education)) +
+  geom_density()
+
+qplot(wage, colour = education, data=training, geom = "density")
+
+
+#Pre-processing predictor variables
+
+library(kernlab)
+
+data(spam)
+
+inTrain <- createDataPartition(y=spam$type,
+                               p=0.75, list=FALSE)
+training <- spam[inTrain,]
+testing <- spam[-inTrain,]
+hist(training$capitalAve,main="",xlab="ave. capital run length")
+
+mean(training$capitalAve)
+sd(training$capitalAve)
+
+#standardizing
+
+trainCapAve <- training$capitalAve
+trainCapAveS <- (trainCapAve - mean(trainCapAve)) / sd(trainCapAve)
+
+hist(trainCapAveS)
+
+mean(trainCapAveS)
+sd(trainCapAveS)
+range(trainCapAveS)
+range(trainCapAve)
+
+
+preObj <- preProcess(training[,-58],method=c("center","scale")) #all training variable except 58
+trainCapAveS <- predict(preObj,training[,-58])$capitalAve
+mean(trainCapAveS)
+sd(trainCapAveS)
+
+testCapAveS <- predict(preObj,testing[,-58])$capitalAve
+mean(testCapAveS)
+sd(testCapAveS)
+
+set.seed(32343)
+modelFit <- train(type ~.,data=training,
+                  preProcess=c("center","scale"),method="glm")
+modelFit
+
+## Standardizing - Box-Cox transforms
+
+preObj <- preProcess(training[,-58],method=c("BoxCox"))
+trainCapAveS <- predict(preObj,training[,-58])$capitalAve
+par(mfrow=c(1,2)); hist(trainCapAveS); qqnorm(trainCapAveS)
+
+?qqnorm
+
+
+## Standardizing - Imputing data
+## Missing data
+# impute data using k nearest neighours imputations
+
+# Make some values NA
+training$capAve <- training$capitalAve
+selectNA <- rbinom(dim(training)[1],size=1,prob=0.05)==1
+training$capAve[selectNA] <- NA
+
+# Impute and standardize
+preObj <- preProcess(training[,-58],method="knnImpute")
+capAve <- predict(preObj,training[,-58])$capAve
+
+# Standardize true values
+capAveTruth <- training$capitalAve
+capAveTruth <- (capAveTruth-mean(capAveTruth))/sd(capAveTruth)
+
+quantile(capAve - capAveTruth)
+quantile((capAve - capAveTruth)[selectNA])
+quantile((capAve - capAveTruth)[!selectNA])
+
+
+#Covariate creation
+# covariates = predictors
+
+spam$capitalAveSq <- spam$capitalAve^2
+head(spam)
+inTrain <- createDataPartition(y=Wage$wage,
+                               p=0.7, list=FALSE)
+training <- Wage[inTrain,]; testing <- Wage[-inTrain,]
+
+table(training$jobclass)
+
+#dummy variables
+
+dummies <- dummyVars(wage ~ jobclass, data = training)
+head(predict(dummies, newdata = training))
+
+nsv <- nearZeroVar(training, saveMetrics = TRUE)
+nsv
+
+library(splines)
+bsBasis <- bs(training$age, df = 3)
+bsBasis
+
+lm1 <- lm(wage ~ bsBasis, data = training)
+plot(training$age, training$wage, pch = 19, cex = 0.5)
+points(training$age, predict(lm1, newdata = training), col = "red")
+
+predict(bsBasis, age = testing$age)
+
+
+#Pre-processing with PCA
+
+inTrain <- createDataPartition(y=spam$type,
+                               p=0.75, list=FALSE)
+training <- spam[inTrain,]
+testing <- spam[-inTrain,]
+
+M <- abs(cor(training[,-58])) #58th columns of dataset is the outcome (spam or not spam)
+head(training[,58])
+M
+diag(M) <- 0 #remove correlation of variables with themselves
+which(M > 0.8,arr.ind=T) #what variables have a correlation >0.8
+
+names(spam)[c(34,32)]
+plot(spam[,34],spam[,32])
+
+dev.off()
+
+#how to combined to predictors
+#use PCA
+
+#rotate plot
+
+X <- 0.71*training$num415 + 0.71*training$num857
+Y <- 0.71*training$num415 - 0.71*training$num857
+plot(X,Y)
+
+
+smallSpam <- spam[, c(34, 32)]
+prComp <- prcomp(smallSpam)
+plot(prComp$x[,1],prComp$x[,2])
+
+prComp$rotation
+
+typeColor <- ((spam$type=="spam")*1 + 1) #black if not spam and red if spam
+prComp <- prcomp(log10(spam[,-58]+1))
+plot(prComp$x[,1],prComp$x[,2],col=typeColor,xlab="PC1",ylab="PC2")
+
+#PCA in caret
+
+preProc <- preProcess(log10(spam[,-58]+1),method="pca",pcaComp=2)
+spamPC <- predict(preProc,log10(spam[,-58]+1))
+plot(spamPC[,1],spamPC[,2],col=typeColor)
+
+#Preprocessing with PCA
+
+preProc <- preProcess(log10(training[,-58]+1),method="pca",pcaComp=2)
+trainPC <- predict(preProc,log10(training[,-58]+1))
+modelFit <- train(training$type ~ .,method="glm",data=trainPC)
+
+
+testPC <- predict(preProc,log10(testing[,-58]+1))
+confusionMatrix(testing$type,predict(modelFit,testPC))
+
+modelFit <- train(training$type ~ .,method="glm",preProcess="pca",data=training)
+confusionMatrix(testing$type,predict(modelFit,testing))
+
+#Predicting with regression
+
+library(caret);data(faithful); set.seed(333)
+inTrain <- createDataPartition(y=faithful$waiting,
+                               p=0.5, list=FALSE)
+trainFaith <- faithful[inTrain,]; testFaith <- faithful[-inTrain,]
+head(trainFaith)
+
+plot(trainFaith$eruptions, trainFaith$waiting, col = "blue", pch=19,
+    xlab = "eruption time", ylab ="wainting time")
+
+ggplot(trainFaith, aes(x = waiting, y = eruptions)) +
+  geom_point() +
+  geom_smooth(method = "lm", color = "red")
+
+# EDi = intercept (b0) + b1waiting + ei
+
+lm1 <- lm(eruptions ~ waiting, data = trainFaith)
+summary(lm1)
+
+#predict new variable
+coef(lm1)[1] + coef(lm1)[2]*80
+
+newdata <- data.frame(waiting =80)
+newdata
+
+predict(lm1, newdata)
+
+#Training and test set
+
+par(mfrow=c(1,2))
+plot(trainFaith$waiting,trainFaith$eruptions,pch=19,col="blue",xlab="Waiting",ylab="Duration")
+lines(trainFaith$waiting,predict(lm1),lwd=3)
+plot(testFaith$waiting,testFaith$eruptions,pch=19,col="blue",xlab="Waiting",ylab="Duration")
+lines(testFaith$waiting,predict(lm1,newdata=testFaith),lwd=3)
+
+#get training set errors / RMSE
+lm1$fitted
+sqrt(sum((lm1$fitted - trainFaith$eruptions)^2))
+
+#error on test
+sqrt(sum((predict(lm1, newdata = testFaith) - testFaith$eruptions)^2))
+
+
+#prediction intervals
+pred1 <- predict(lm1,newdata=testFaith,interval="prediction")
+ord <- order(testFaith$waiting)
+plot(testFaith$waiting,testFaith$eruptions,pch=19,col="blue")
+matlines(testFaith$waiting[ord],pred1[ord,],type="l",,col=c(1,2,2),lty = c(1,1,1), lwd=3)
+
+dev.off()
+
+modFit <- train(eruptions ~ waiting,data=trainFaith,method="lm")
+summary(modFit$finalModel)
+
+#Prediction with regression using multiple covariates
+library(ISLR); library(ggplot2); library(caret);
+data(Wage); Wage <- subset(Wage,select=-c(logwage))
+summary(Wage)
+
+inTrain <- createDataPartition(y=Wage$wage, p = 0.7, list = FALSE)
+training <- Wage[inTrain,]
+testing <- Wage[-inTrain,]
+
+dim(training)
+dim(testing)
+
+featurePlot(x = training[,c("age","education","jobclass")],
+            y = training$wage,
+            plot="pairs")
+
+ggplot(training, aes(age, wage, color = education)) +
+  geom_point(col = "black") +
+  geom_smooth(method = "lm")
+
+?geom_smooth
+
+ggplot(training, aes(age, wage, color = education)) +
+  geom_point()
+
+
+#fit linear model with multiple variables
+
+modFit<- train(wage ~ age + jobclass + education,
+               method = "lm",data=training)
+finMod <- modFit$finalModel
+print(modFit)
+summary(modFit)
+
+#Diagnostics
+plot(finMod,1,pch=19,cex=0.5,col="#00000010")
+
+## Color by variables not used in the model 
+qplot(finMod$fitted,finMod$residuals,colour=race,data=training)
+
+
+# plot index
+plot(finMod$residuals,pch=19)
+
+## Predicted versus truth in test set
+pred <- predict(modFit, testing)
+qplot(wage,pred,colour=year,data=testing)
+
+#predict with all variables
+
+modFitAll<- train(wage ~ .,data=training,method="lm")
+pred <- predict(modFitAll, testing)
+qplot(wage,pred,data=testing)
+
+
+#Quiz 2
+#Q1
+install.packages("AppliedPredictiveModeling")
+library(AppliedPredictiveModeling)
+data(AlzheimerDisease)
+
+adData = data.frame(diagnosis, predictors)
+head(adData)
+trainIndex = createDataPartition(diagnosis, p = 0.5, list = FALSE)
+training <- adData[trainIndex,]
+testing <- adData[-trainIndex,]
+
+dim(training)
+dim(testing)
+
+#Q2
+data(concrete)
+set.seed(1000)
+
+inTrain = createDataPartition(mixtures$CompressiveStrength, p = 3/4)[[1]]
+training = mixtures[inTrain,]
+testing = mixtures[-inTrain,]
+
+head(concrete)
+
+library(Hmisc)
+
+cut <- cut2(training$wage, g=3)
+?cut2
+
+ggplot(concrete, aes(CompressiveStrength, Cement)) +
+  geom_point()
+
+plot(concrete$CompressiveStrength)
+
+# Create a data frame with index and CompressiveStrength
+concrete$Index <- 1:nrow(concrete)
+head(concrete)
+
+
+ggplot(concrete, aes(x = Index, y = CompressiveStrength, color = Age)) +
+  geom_point() +
+  geom_smooth(method = "lm", col = "red") +
+  labs(x = "Index", y = "Compressive Strength") +
+  theme_minimal()
+  
+#Answer: There is a non-random pattern in the plot of the outcome versus index that does not appear to be perfectly explained by any predictor suggesting a variable may be missing.
+  
+
+#Q3
+
+hist(concrete$Superplasticizer)
+#Contains values of 0 which would be infinite if log transformed
+
+
